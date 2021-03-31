@@ -1,15 +1,19 @@
 // Agregamos react
-import React, { useState } from 'react';
+// Agregamos useState, y useEffect. Este último es más para firebase
+import React, { useState, useEffect } from 'react';
 
 // Una vez agregado "lodash", lo importamos
 // yarn add lodash
-import { isEmpty, size } from 'lodash';
+import { isEmpty, size, sortBy } from 'lodash';
 
-// Vamos a importar una librería para generar ID únicos
+// Vamos a importar una librería para generar ID únicos. YA NO LO VAMOS A UTILIZAR PORQUE FIREBASE GENERA UNO
 // yarn add shortid
 import shortid from 'shortid';
+import { addDocument, deleteDocument, getCollection, updateDocument } from './actions';
 
 // Importamos el hook de estado "useState", sirve para manejar datos.
+
+// IMPORTAMOS FIRBASE, CON: yarn add firebase@~7.9.0
 
 function App() {
    // Utilizamos el hook
@@ -26,6 +30,19 @@ function App() {
 
    const [error, setError] = useState(null);
 
+   // Este método se va a ejecutar cuando la página cargue
+   // Va a traes los datos alojados en firebase
+   useEffect(() => {
+      (async () => {
+         const result = await getCollection('tasks'); // Agregamos el nombre de la colección para consultar en firebase
+
+         // Si fue exitosa la operación, retornará true
+         if (result.statusResponse) {
+            setTasks(sortBy(result.data, ['name'])); // Insertamos los datos consultados en pantalla, además ordenamos con lodash
+         }
+      })();
+   }, []);
+
    const validarForm = () => {
       let isValid = true;
       setError(null);
@@ -34,23 +51,33 @@ function App() {
       // yarn add lodash
       // Con esta librería ya podemos validar:
       if (isEmpty(task)) {
-         setError("Debes de ingresar una tarea.");
+         setError('Debes de ingresar una tarea.');
          isValid = false;
       }
       return isValid;
-   }
+   };
 
    // Método para agregar el método
-   const addTask = (e) => {
+   const addTask = async (e) => {
       e.preventDefault(); // Evitamos que se recargue la página
 
-      if(!validarForm()) return;
+      if (!validarForm()) return;
 
-      // Creamos un objeto con su id y su tarea
-      const newTask = {
-         id: shortid.generate(),
-         name: task,
-      };
+      // ESTO YA ES CON FIREBASE: Consultamos el id
+      const result = await addDocument("tasks", {name: task}); // Le pasamos el nombre de la colección.
+
+      if(result.statusReponse){
+         setError(result.error);
+         return;
+      }
+
+      const newTask = {id: result.data.id, name: task}; // Con firebase
+
+      // Creamos un objeto con su id y su tarea, pero esto no va con firebase
+      // const newTask = {
+      //    id: shortid.generate(),
+      //    name: task,
+      // };
 
       // Con spred operator:
       // setTasks guarda las lista de tareas en tasks. También se podría hacer con tasks.push(newTask)
@@ -62,7 +89,16 @@ function App() {
    };
 
    // Será llamado cuando se presione el botón "Eliminar"
-   const deleteTask = (id) => {
+   const deleteTask = async (id) => {
+
+      if(!(window.confirm("Are you sure to delete this task?"))) return;
+
+      const result = await deleteDocument("tasks", id); // Eliminamos en firebase
+      if(!result.statusResponse){
+         setError(result.error);
+         return;
+      }
+
       // La vamos a eliminar con el método filter. Dejará de lado aquella en donde el id coincida
       const filteredTasks = tasks.filter((task) => task.id !== id);
       setTasks(filteredTasks);
@@ -71,15 +107,21 @@ function App() {
    // Este método será llamado cuando presione el botón "Editar"
    const editTask = (theTask) => {
       setTask(theTask.name);
-      // setEditMode(true); // Colocamos el modo edit.
-      editMode ? setEditMode(false) : setEditMode(true);
+      setEditMode(true); // Colocamos el modo edit.
+      // editMode ? setEditMode(false) : setEditMode(true);
       setId(theTask.id); // Guardamos el id porque se pierde tras editarlo.
    };
 
    // Este método será llamado cuando tras darle al botón "Guardar" en el formulario
-   const saveTask = (e) => {
+   const saveTask = async(e) => {
       e.preventDefault();
       if (!validarForm()) return;
+
+      const result = await updateDocument("tasks", id, {name: task}); // Actualizamos en firebase
+      if(!result.statusResponse){
+         setError(result.error);
+         return;
+      }
 
       const editedTask = tasks.map((item) => (item.id === id ? { id, name: task } : item));
       setTasks(editedTask);
@@ -96,7 +138,7 @@ function App() {
 
          <div className="row">
             {/* LISTA DE TAREAS: Columna de 8 */}
-            <div className="col-8">
+            <div className="col-md-8 col-sm-12">
                <h4 className="text-center">Lista de tareas</h4>
                {/* size es un método de lodash */}
                {size(tasks) === 0 ? (
@@ -124,7 +166,7 @@ function App() {
             </div>
 
             {/* FORMULARIO: Columna de 4 para completar las 12 */}
-            <div className="col-4">
+            <div className="col-sm-12 col-md-4">
                <h4 className="text-center">{editMode ? 'Modificar tarea' : 'Agregar tarea'}</h4>
 
                {/* Colocamos "addTask" porque el método no lleva parámetros y podemos hacerlo así */}
@@ -137,9 +179,7 @@ function App() {
                      onChange={(text) => setTask(text.target.value)}
                      value={task}
                   ></input>
-                  {
-                     error && <span className="text-danger mb-2">{error}</span>
-                  }
+                  {error && <span className="text-danger mb-2">{error}</span>}
                   <button type="submit" className={editMode ? 'btn btn-warning btn-block' : 'btn btn-dark btn-block'}>
                      {editMode ? 'Guardar' : 'Agregar'}
                   </button>
